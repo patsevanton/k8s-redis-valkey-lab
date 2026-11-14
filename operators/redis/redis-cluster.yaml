@@ -1,0 +1,72 @@
+# Redis Cluster под управлением OT-CONTAINER-KIT redis-operator.
+#
+#   kubectl create namespace redis-valkey-lab
+#   kubectl apply -f operators/redis/redis-cluster.yaml
+#
+# clusterSize: 3 — три мастера и три реплики (по одной на шард), всего 6 подов.
+# Образ quay.io/opstree/redis:v8.10.1 — последний собранный оператором;
+# upstream Redis на момент замера 8.10.3.
+
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisCluster
+metadata:
+  name: redis-cluster
+  namespace: redis-valkey-lab
+  labels:
+    clusterId: redis-cluster
+    app.kubernetes.io/part-of: redis-valkey-lab
+spec:
+  clusterSize: 3
+  clusterVersion: v8
+  persistenceEnabled: true
+
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v8.10.1
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  redisLeader:
+    # PDB у оператора не создаётся по умолчанию — включаем явно.
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            role: leader
+            clusterId: redis-cluster
+
+  redisFollower:
+    pdb:
+      enabled: true
+      maxUnavailable: 1
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            role: follower
+            clusterId: redis-cluster
+
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+    nodeConfVolume: false

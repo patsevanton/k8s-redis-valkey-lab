@@ -1,0 +1,57 @@
+# Valkey Cluster под управлением официального valkey-operator.
+#
+#   kubectl create namespace redis-valkey-lab
+#   kubectl apply -f operators/valkey/valkey-cluster.yaml
+#
+# shards: 3, replicasPerShard: 1 — три мастера и три реплики, всего 6 подов.
+# API v1alpha1, оператор помечен как early development.
+
+apiVersion: valkey.io/v1alpha1
+kind: ValkeyCluster
+metadata:
+  name: valkey-cluster
+  namespace: redis-valkey-lab
+  labels:
+    app.kubernetes.io/part-of: redis-valkey-lab
+spec:
+  shards: 3
+  replicasPerShard: 1
+  workloadType: StatefulSet
+  image: docker.io/valkey/valkey:9.1.3
+
+  persistence:
+    size: 1Gi
+    reclaimPolicy: Delete
+
+  config:
+    appendonly: "yes"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scheduling:
+    node:
+      spread:
+        shard:
+          mode: Preferred
+    zone:
+      spread:
+        shard:
+          mode: Preferred
+
+  exporter:
+    enabled: false
+
+  # Открытый default user, чтобы valkey-cli работал без пароля.
+  # Для стенда допустимо; в production так делать нельзя.
+  acl:
+    users:
+      - name: default
+        password:
+          type: Any
+        permissions: "~* &* +@all"

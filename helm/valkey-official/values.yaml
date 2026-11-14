@@ -1,0 +1,93 @@
+# Официальный Valkey Helm-чарт (valkey-io): репликация + Sentinel + HAProxy.
+#
+# Установка:
+#   helm repo add valkey https://valkey.io/valkey-helm
+#   helm repo update
+#   helm install valkey-official valkey/valkey \
+#     --version 1.0.0 -n valkey-official --create-namespace \
+#     -f helm/valkey-official/values.yaml
+#
+# Отличия от Redis-чартов: Valkey и Sentinel — отдельные StatefulSet, поэтому
+# подов больше. PersistentVolume создаётся на каждый под Valkey.
+
+image:
+  registry: docker.io
+  repository: valkey/valkey
+  tag: "9.1.3"
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+replica:
+  enabled: true
+  replicas: 3
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# AOF, как в Redis-вариантах: сравнение по одинаковой durability.
+extraConfig: |-
+  appendonly yes
+
+sentinel:
+  enabled: true
+  replicas: 3
+  quorum: 2
+  # Sentinel всегда требует собственный пароль, даже при выключенном auth.
+  password: "lab-sentinel-change-me"
+  downAfterMilliseconds: 5000
+  failoverTimeout: 60000
+  parallelSyncs: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: valkey-sentinel
+          app.kubernetes.io/component: sentinel
+
+  # Кворум 2 из 3: разрешаем вытеснить только один Sentinel за раз,
+  # иначе drain узла может уронить кворум.
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/component: valkey
+
+# В чарте PDB выключен по умолчанию. Включаем, чтобы drain узла вёл себя
+# так же, как в Redis-чартах, и замеры были сопоставимы.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+metrics:
+  enabled: false
+
+# HAProxy умеет ходить в мастер через Sentinel. Включите, если нужен единый
+# стабильный адрес для записи вместо клиентского Sentinel-дискавери.
+haproxy:
+  enabled: false

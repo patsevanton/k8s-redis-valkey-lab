@@ -1,0 +1,17 @@
+# Скопируйте в terraform.tfvars и поправьте под себя.
+# terraform.tfvars уже в .gitignore.
+
+# folder_id = "b1gxxxxxxxxxxxxxxxx"
+
+cluster_name       = "redis-valkey-lab"
+zone               = "ru-central1-d"
+node_zones         = ["ru-central1-d", "ru-central1-a"]
+kubernetes_version = "1.35"
+node_count         = 3
+
+# Ограничьте Kubernetes API своим адресом.
+# admin_cidrs = ["203.0.113.10/32"]
+
+# allow_ssh_from_admin = true
+# node_preemptible     = true
+# node_count           = 4

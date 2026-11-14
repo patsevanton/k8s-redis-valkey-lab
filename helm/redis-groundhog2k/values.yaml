@@ -1,0 +1,60 @@
+# Redis 8.10.3 через community-чарт groundhog2k: репликация + Sentinel-сайдкар.
+#
+# Установка:
+#   helm repo add groundhog2k https://groundhog2k.github.io/helm-charts
+#   helm repo update
+#   helm install redis-groundhog2k groundhog2k/redis \
+#     --version 2.4.9 -n redis-valkey-lab \
+#     -f helm/redis-groundhog2k/values.yaml
+#
+# appVersion чарта — 8.10.3, ровно последний стабильный Redis. Образ
+# фиксируется тегом ниже, плавающих latest здесь нет.
+
+image:
+  registry: docker.io
+  repository: redis
+  tag: "8.10.3"
+  pullPolicy: IfNotPresent
+
+# HA-режим: Sentinel запускается сайдкаром в каждом поде, masterGroupName
+# должны использовать клиенты для поиска мастера.
+haMode:
+  enabled: true
+  replicas: 3
+  masterGroupName: redisha
+  quorum: 2
+  downAfterMilliseconds: 5000
+  failoverTimeout: 60000
+  parallelSyncs: 1
+
+storage:
+  requestedSize: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+sentinelResources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Мягко разносим поды по зонам, чтобы падение зоны не уносило кворум.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: redis
+
+# В чарте PDB выключен, пока не задан бюджет. Включаем для сопоставимого drain.
+podDisruptionBudget:
+  maxUnavailable: 1

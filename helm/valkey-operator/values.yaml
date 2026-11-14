@@ -1,0 +1,38 @@
+# Официальный Valkey Operator (valkey-io). Версия 0.9.0, CRD v1alpha1.
+#
+# Установка:
+#   helm repo add valkey https://valkey.io/valkey-helm
+#   helm repo update
+#   helm install valkey-operator valkey/valkey-operator \
+#     --version 0.9.0 -n valkey-operator --create-namespace \
+#     -f helm/valkey-operator/values.yaml
+#
+# Оператор умеет только кластерный режим (шарды + реплики), standalone и
+# Sentinel не поддерживаются. API молодой, для production не заявлен.
+
+image:
+  registry: ghcr.io
+  repository: valkey-io/valkey-operator
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+manager:
+  leaderElection:
+    enabled: true
+
+  # Следим за всеми namespace, чтобы CR можно было класть в valkey-lab.
+  watchNamespaces: []
+
+  # Образы по умолчанию для ValkeyCluster без spec.image.
+  defaultImages:
+    valkey: docker.io/valkey/valkey:9.1.3
+    exporter: docker.io/oliver006/redis_exporter:v1.88.0
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
