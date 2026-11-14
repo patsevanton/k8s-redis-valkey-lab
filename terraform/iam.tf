@@ -6,8 +6,9 @@ resource "yandex_iam_service_account" "cluster" {
 
 resource "yandex_resourcemanager_folder_iam_member" "cluster" {
   for_each = toset([
-    "k8s.clusters.agent", # создание узлов, дисков и внутренних балансировщиков
-    "vpc.publicAdmin",    # публичный IP мастера
+    "k8s.clusters.agent",       # создание узлов, дисков и внутренних балансировщиков
+    "vpc.publicAdmin",          # публичный IP мастера
+    "k8s.tunnelClusters.agent", # туннельный режим Cilium (VxLAN)
   ])
 
   folder_id = local.folder_id

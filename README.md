@@ -2,7 +2,7 @@
 
 Стенд для сравнения Redis и Valkey в Kubernetes. Terraform поднимает управляемый кластер в Yandex Cloud, Helm-значения и CR-манифесты разворачивают пять вариантов: три Helm-чарта и два оператора. Дальше на одном и том же железе можно сравнивать функциональность, поведение при отказе, потребление ресурсов и актуальность версий.
 
-Инфраструктура: зональный мастер Kubernetes 1.35 в `ru-central1-d`, три узла 2 vCPU / 4 ГБ в `ru-central1-d` и `ru-central1-a`, сеть `10.10.0.0/16`, Calico.
+Инфраструктура: зональный мастер Kubernetes 1.35 в `ru-central1-d`, три узла 2 vCPU / 4 ГБ в `ru-central1-d` и `ru-central1-a`, сеть `10.10.0.0/16`, Cilium в туннельном режиме VxLAN (он же CNI кластера).
 
 ## Что разворачивается
 
@@ -186,6 +186,7 @@ kubectl exec -n redis-valkey-lab \
 ## Ограничения стенда
 
 - **`rc1b` недоступна.** Все ресурсы создаются только в `ru-central1-d` и `ru-central1-a`. Региональный мастер требует трёх зон `ru-central1`, поэтому здесь используется зональный.
+- **Сетевую реализацию нельзя сменить после создания.** Cilium включается в Terraform блоком `network_implementation { cilium {} }` и требует у сервисного аккаунта кластера роль `k8s.tunnelClusters.agent`. Вместе с Calico он несовместим, а переключение на Calico или другой CNI возможно только пересозданием кластера.
 - **Master не HA.** Падение зоны с мастером остановит API. Это осознанный компромисс по цене; отказоустойчивость данных проверяется на уровне подов и узлов.
 - **У Redis нет официального Helm-чарта.** Redis в Helm представлен только community-чартами (в стенде — groundhog2k и CloudPirates), тогда как Valkey публикует официальный чарт. Это часть сравнения: у Valkey выше уровень поддержки в Kubernetes.
 - **Разная цена Sentinel.** У groundhog2k, CloudPirates и официального чарта Valkey Sentinel — сайдкар в поде с данными (3 пода), у оператора Valkey и OT кластерный режим без Sentinel (6 подов). Сравнивайте не только задержку failover, но и накладные расходы.
@@ -257,6 +258,8 @@ PVC и диски, созданные CSI-драйвером, могут ост�
 ## Источники
 
 - Поддерживаемые версии Kubernetes в Yandex Cloud: <https://yandex.cloud/ru/docs/managed-kubernetes/concepts/k8s-supported-versions>
+- Сетевые политики и Cilium в Managed Service for Kubernetes: <https://yandex.cloud/ru/docs/managed-kubernetes/concepts/network-policy>
+- Настройка Cilium и Hubble UI: <https://yandex.cloud/ru/docs/managed-kubernetes/operations/cilium>
 - Рекомендации по группам безопасности кластера: <https://yandex.cloud/ru/docs/managed-kubernetes/operations/connect/security-groups>
 - Создание кластера и сервисных аккаунтов: <https://yandex.cloud/ru/docs/managed-kubernetes/operations/kubernetes-cluster/kubernetes-cluster-create>
 - Релизы Redis: <https://github.com/redis/redis/releases>

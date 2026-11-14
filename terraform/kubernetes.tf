@@ -8,8 +8,14 @@ resource "yandex_kubernetes_cluster" "this" {
   service_account_id      = yandex_iam_service_account.cluster.id
   node_service_account_id = yandex_iam_service_account.nodes.id
   release_channel         = var.release_channel
-  network_policy_provider = "CALICO"
   labels                  = var.labels
+
+  # Cilium — это CNI в туннельном режиме VxLAN, который включает Yandex Cloud.
+  # Вместе с Calico его включить нельзя, а после создания кластера поменять
+  # сетевую реализацию невозможно: кластер придётся пересоздавать.
+  network_implementation {
+    cilium {}
+  }
 
   master {
     version = var.kubernetes_version
