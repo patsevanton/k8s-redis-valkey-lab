@@ -1,12 +1,7 @@
-resource "yandex_logging_group" "master" {
-  name      = "${var.cluster_name}-master"
-  folder_id = local.folder_id
-  labels    = var.labels
-}
-
 resource "yandex_kubernetes_cluster" "this" {
   name                    = var.cluster_name
   description             = "Redis vs Valkey lab: Helm charts, operators, failover"
+  folder_id               = local.folder_id
   network_id              = yandex_vpc_network.this.id
   cluster_ipv4_range      = var.cluster_ipv4_range
   service_ipv4_range      = var.service_ipv4_range
@@ -36,15 +31,6 @@ resource "yandex_kubernetes_cluster" "this" {
         start_time = var.maintenance_start_time
         duration   = var.maintenance_duration
       }
-    }
-
-    master_logging {
-      enabled                    = true
-      log_group_id               = yandex_logging_group.master.id
-      kube_apiserver_enabled     = true
-      cluster_autoscaler_enabled = true
-      events_enabled             = true
-      audit_enabled              = true
     }
   }
 
