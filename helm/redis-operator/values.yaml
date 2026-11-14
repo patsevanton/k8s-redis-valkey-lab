@@ -1,0 +1,32 @@
+# Redis Operator от OT-CONTAINER-KIT: управляет RedisCluster, RedisSentinel,
+# RedisReplication и Redis.
+#
+# Установка:
+#   helm repo add ot-container-kit https://ot-container-kit.github.io/helm-charts
+#   helm repo update
+#   helm install redis-operator ot-container-kit/redis-operator \
+#     --version 0.27.0 -n redis-operator --create-namespace \
+#     -f helm/redis-operator/values.yaml
+
+redisOperator:
+  imageTag: v0.27.0
+  imagePullPolicy: IfNotPresent
+
+  # Пустое значение — оператор следит за всеми namespace.
+  watchNamespace: ""
+
+  # Webhook нужен только для антиаффинности leader/follower.
+  webhook: false
+
+  metrics:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+replicas: 1
