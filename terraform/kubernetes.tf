@@ -93,13 +93,15 @@ resource "yandex_kubernetes_node_group" "workers" {
     }
   }
 
+  # Подсети передаются только в instance_template.network_interface.subnet_ids:
+  # API не принимает их одновременно в allocation_policy.location.subnet_id,
+  # а сам location.subnet_id в провайдере уже устарел.
   allocation_policy {
     dynamic "location" {
-      for_each = yandex_vpc_subnet.nodes
+      for_each = local.node_subnets
 
       content {
-        zone      = location.key
-        subnet_id = location.value.id
+        zone = location.key
       }
     }
   }
