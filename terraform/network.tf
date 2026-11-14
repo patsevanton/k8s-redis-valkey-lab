@@ -1,6 +1,7 @@
 resource "yandex_vpc_network" "this" {
-  name   = var.cluster_name
-  labels = var.labels
+  name      = var.cluster_name
+  folder_id = local.folder_id
+  labels    = var.labels
 }
 
 locals {
@@ -22,6 +23,7 @@ resource "yandex_vpc_subnet" "nodes" {
   for_each = local.node_subnets
 
   name           = "${var.cluster_name}-${each.key}"
+  folder_id      = local.folder_id
   zone           = each.key
   network_id     = yandex_vpc_network.this.id
   v4_cidr_blocks = [each.value]
@@ -31,6 +33,7 @@ resource "yandex_vpc_subnet" "nodes" {
 # Группа безопасности мастера: API доступен администратору и узлам.
 resource "yandex_vpc_security_group" "master" {
   name       = "${var.cluster_name}-master"
+  folder_id  = local.folder_id
   network_id = yandex_vpc_network.this.id
   labels     = var.labels
 
@@ -68,6 +71,7 @@ resource "yandex_vpc_security_group" "master" {
 # Группа безопасности узлов: обмен внутри кластера, проверки балансировщика и интернет.
 resource "yandex_vpc_security_group" "nodes" {
   name       = "${var.cluster_name}-nodes"
+  folder_id  = local.folder_id
   network_id = yandex_vpc_network.this.id
   labels     = var.labels
 

@@ -7,6 +7,7 @@ resource "yandex_logging_group" "master" {
 resource "yandex_kubernetes_cluster" "this" {
   name                    = var.cluster_name
   description             = "Redis vs Valkey lab: Helm charts, operators, failover"
+  folder_id               = local.folder_id
   network_id              = yandex_vpc_network.this.id
   cluster_ipv4_range      = var.cluster_ipv4_range
   service_ipv4_range      = var.service_ipv4_range
