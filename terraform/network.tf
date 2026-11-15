@@ -1,3 +1,11 @@
+# TODO: удалить группу безопасности сети по умолчанию.
+# Yandex Cloud вместе с сетью создаёт `default-sg-<network_id>` вне Terraform,
+# поэтому в state её нет и `terraform destroy` её не удалит. Пока она висит на
+# сети, удаление сети падает с ошибкой «Security group is in use». Перед
+# destroy нужно либо удалить её командой
+#   yc vpc security-group delete --id <id>
+# либо завести в коде `yandex_vpc_default_security_group` (с import), чтобы
+# Terraform управлял ею сам.
 resource "yandex_vpc_network" "this" {
   name      = var.cluster_name
   folder_id = local.folder_id
