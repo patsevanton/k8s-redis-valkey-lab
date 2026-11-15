@@ -69,4 +69,7 @@ spec:
         resources:
           requests:
             storage: 1Gi
+    # nodes.conf задан как /node-conf/nodes.conf, а не на PVC: при false это
+    # каталог внутри контейнера, он теряется при пересоздании пода, и узел
+    # возвращается одиночным мастером (issue #1978, разбор в README).
     nodeConfVolume: false
