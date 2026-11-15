@@ -16,7 +16,7 @@
 | `redis-operator` | Оператор OT-CONTAINER-KIT | Redis Cluster | 6 (3 шарда × 1 реплика) | нет | 6 | Redis 8.10.1 |
 | `valkey-operator` | Оператор valkey-io | Valkey Cluster | 6 (3 шарда × 1 реплика) | нет | 6 | Valkey 9.1.3 |
 
-Всего подов — это поды с данными и Sentinel. Поды контроллеров операторов в подсчёт не входят: `redis-operator` и `valkey-operator` добавляют по одному поду в свои namespace. Все пять вариантов вместе — 24 таких пода плюс 2 контроллера, поэтому на трёх узлах они одновременно не помещаются.
+Всего подов — это поды с данными и Sentinel. Поды контроллеров операторов в подсчёт не входят: `redis-operator` и `valkey-operator` добавляют по одному поду в свои namespace. Все пять вариантов вместе — 24 таких пода плюс 2 контроллера. На трёх узлах 2 vCPU / 4 ГБ они помещаются только за счёт скромных `requests`: замер на стенде дал 98%, 90% и 69% занятой памяти узлов, при этом `limits` переподписаны до 481% CPU и 347% памяти. Для нагрузочных сценариев запускайте по одному-два варианта.
 
 ### Состав подов
 
@@ -129,7 +129,7 @@ helm install valkey-operator valkey/valkey-operator \
 kubectl apply -f operators/valkey/valkey-cluster.yaml
 ```
 
-Одновременно все пять вариантов на трёх узлах не поместятся. Запускайте по одному-два и удаляйте предыдущие, либо увеличьте `node_count` до 4–5.
+Все пять вариантов на трёх узлах помещаются — 24 пода с данными и Sentinel плюс два контроллера операторов. Но запас по памяти почти исчерпан: на узле в `ru-central1-d` запрошено 98% памяти, на двух в `ru-central1-a` — 90% и 69%, а `limits` переподписаны втрое-вчетверо. Для сценариев с нагрузкой и для отказа зоны запускайте по одному-два варианта и удаляйте предыдущие, либо увеличьте `node_count` до 4–5.
 
 ## Сценарии сравнения
 
@@ -146,7 +146,9 @@ kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- \
   redis-cli SET lab:key value EX 60
 kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- redis-cli TTL lab:key
 
-# Модули: у Redis 8 в образе есть JSON/Search, у Valkey — только то, что собрано в образе
+# Модули. В официальном образе `redis` из Redis 8 есть только vectorset:
+# JSON, Search, Bloom и прочие модули лежат в отдельном образе redis-stack,
+# а не в `redis`. У Valkey в образе модуль lua.
 kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- redis-cli MODULE LIST
 kubectl exec -n redis-valkey-lab valkey-official-0 -c valkey -- valkey-cli MODULE LIST
 
@@ -155,6 +157,11 @@ kubectl exec -n redis-valkey-lab redis-groundhog2k-0 -c redis-sentinel -- \
   redis-cli -p 26379 SENTINEL get-master-addr-by-name redisha
 kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c sentinel -- \
   redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+# У официального чарта Valkey Sentinel всегда закрыт отдельным паролем
+# (sentinel.password в values), и запросы идут под ACL-пользователем sentinel.
+kubectl exec -n redis-valkey-lab valkey-official-sentinel-0 -- \
+  sh -c 'REDISCLI_AUTH=lab-sentinel-change-me valkey-cli --user sentinel -p 26379 \
+    SENTINEL get-master-addr-by-name mymaster'
 
 # Кластерный режим у операторов.
 # У valkey-operator имя пода выдаёт сам оператор в status.podName ValkeyNode.
@@ -165,6 +172,8 @@ kubectl exec -n redis-valkey-lab \
 ```
 
 Имена подов и контейнеров, на которые опираются команды: `redis-groundhog2k-0` (`redis-server`, `redis-sentinel`), `redis-cloudpirates-0` (`redis`, `sentinel`), `valkey-official-0` (`valkey`), `redis-cluster-leader-0` у оператора OT. У valkey-operator каждый узел получает свой StatefulSet `valkey-<имя>-<шард>-<номер>`, поэтому имя пода смотрите в `status.podName`.
+
+У подов valkey-operator контейнер называется `server`, а в окружение оператор кладёт `VALKEYCLI_AUTH`/`PRIMARY_AUTH`. Из-за этого каждый вызов `valkey-cli` печатает `AUTH failed: ERR AUTH <password> called without any password configured`, хотя команда выполняется и ответ приходит. Это шум, а не отказ.
 
 Обратите внимание: у groundhog2k мастер-группа Sentinel называется `redisha`, у CloudPirates и официального чарта Valkey — `mymaster`. Это важно для клиентского дискавери.
 
@@ -195,6 +204,28 @@ kubectl exec -n redis-valkey-lab \
 
 5. **Плановое обслуживание.** `kubectl drain` узла: проверьте PDB, время переезда и потерю данных. Бюджет `maxUnavailable: 1` задан у всех пяти вариантов: в чартах groundhog2k и CloudPirates и в CR оператора OT мы включаем его в values (там по умолчанию его нет), официальный чарт Valkey тоже требует явного включения, а valkey-operator создаёт PDB сам в режиме `Cluster`.
 
+### Замер failover мастера (2026-11-15)
+
+Пять вариантов ставились одновременно на три узла, у каждого удалялся под текущего мастера. Время — от `kubectl delete pod` до появления нового мастера и до первой успешной записи в него (прочерк — запись отдельно не замерялась). Потерю записей этот прогон не проверял, для неё нужен непрерывный поток записи по сценарию 2.
+
+| Вариант | Новый мастер | Запись | Механизм переключения |
+|---|---|---|---|
+| `redis-groundhog2k` | 8 c | — | нет preStop, срабатывает `down-after-milliseconds: 5000` и выборы Sentinel |
+| `redis-cloudpirates` | 3–4 c | — | preStop-хук `prestop.sh` инициирует failover до остановки контейнера |
+| `valkey-official` | 3 c | 5 c | preStop-хук `sentinel-prestop.sh` |
+| `redis-operator` (OT) | 5 c | 5 c | preStop `cluster failover` на реплику с максимальным offset |
+| `valkey-operator` | 7 c | 9 c | preStop нет, реплику выбирает кластер; замер с `--force --grace-period=0` |
+
+Разница объясняется не скоростью Redis или Valkey, а упаковкой. Где есть preStop-хук, мастерство передаётся до остановки контейнера: 3–5 c. У valkey-operator хука нет, поэтому работают выборы реплики по таймауту кластера: 7–9 c. У groundhog2k хуков нет вообще, и время равно детекции Sentinel `down-after-milliseconds: 5000` плюс выборы: 8 c. У CloudPirates хук висит на обоих контейнерах (`prestop.sh` и `prestop-sentinel.sh`).
+
+Отдельный результат — **реанимация пода у оператора OT**. Переключение на реплику проходит за 5 c, но пересозданный под не возвращается в кластер: у него на PVC остался `nodes.conf`, и он поднимается одиночным мастером с одним слотом. Кластер видит его как `slave,fail`, продолжает работать пятью узлами, а оператор раз в минуту безуспешно пытается выполнить `redis-cli --cluster create` и логирует `Node ... is not empty` (подробности и логи — в [OT-CONTAINER-KIT/redis-operator#1978](https://github.com/OT-CONTAINER-KIT/redis-operator/issues/1978)). Итог: шард живёт без реплики, пока под не почистят вручную. Сброс — удалить PVC этого пода, чтобы он пересоздал конфигурацию:
+
+```bash
+kubectl delete pvc -n redis-valkey-lab redis-cluster-leader-redis-cluster-leader-0
+```
+
+`valkey-operator` ту же ситуацию переживает штатно: реплика становится primary, пересозданный под догоняет её как replica, CR возвращается в `Ready` примерно за полминуты.
+
 ### Актуальность версий
 
 Фиксируйте в таблице: версию сервера из `INFO server`, версию чарта (`helm list`), дату релиза образа и дату последнего коммита оператора. Отдельно отметьте, как быстро вендор подтягивает CVE и новые мажорные версии.
@@ -206,6 +237,7 @@ kubectl exec -n redis-valkey-lab \
 - **Master не HA.** Падение зоны с мастером остановит API. Это осознанный компромисс по цене; отказоустойчивость данных проверяется на уровне подов и узлов.
 - **У Redis нет официального Helm-чарта.** Redis в Helm представлен только community-чартами (в стенде — groundhog2k и CloudPirates), тогда как Valkey публикует официальный чарт. Это часть сравнения: у Valkey выше уровень поддержки в Kubernetes.
 - **Разная цена Sentinel.** У groundhog2k и CloudPirates Sentinel — сайдкар в поде с данными (3 пода, 3 контейнера Sentinel), у официального чарта Valkey — три отдельных пода Sentinel (6 подов всего), у оператора Valkey и OT кластерный режим без Sentinel (6 подов). Сравнивайте не только задержку failover, но и накладные расходы.
+- **PDB в чарте CloudPirates.** Чарт по умолчанию ставит `minAvailable: 1`, и если добавить к нему `maxUnavailable`, Kubernetes отвергает PDB (`minAvailable and maxUnavailable cannot be both set`). В values бюджет задаётся только через `maxUnavailable`, а `minAvailable` явно обнуляется ([CloudPirates-io/helm-charts#1922](https://github.com/CloudPirates-io/helm-charts/issues/1922)).
 - **Valkey Operator молодой.** CRD `v1alpha1`, поддерживается только кластерный режим; standalone и Sentinel не заявлены. Для production оператор пока не рекомендован.
 - **Расхождение версий у вендоров.** Образ OT-оператора `quay.io/opstree/redis:v8.10.1` отстаёт от upstream 8.10.3 на два патча; чарт CloudPirates несёт appVersion 8.10.2, образ в values поднят до 8.10.3 отдельно. Так выглядит реальная скорость обновления упаковок, и это тоже результат замера.
 - **Digest-фиксация только у CloudPirates.** groundhog2k и официальный чарт Valkey фиксируют версию тегом, CloudPirates — тегом и digest. Для воспроизводимых замеров сверяйте digest через `kubectl get pod -o jsonpath='{.spec.containers[*].image}'`.
@@ -270,6 +302,13 @@ terraform destroy
 ```
 
 PVC и диски, созданные CSI-драйвером, могут остаться после удаления namespace. Проверьте `kubectl get pv` и `yc compute disk list` перед `terraform destroy`. У чарта CloudPirates есть отдельный флаг `persistence.keepPvc`, у groundhog2k — `storage.keepPvc`: по умолчанию PVC удаляются вместе с релизом.
+
+Yandex Cloud вместе с сетью создаёт неуправляемую группу безопасности по умолчанию (`default-sg-<network_id>`, флаг `default_for_network: true`) с открытым в обе стороны доступом. В state её нет, поэтому `terraform destroy` её не удалит, а сеть с висящей на ней группой не удалится. Перед `terraform destroy` удалите её вручную — в коде это отмечено TODO в `terraform/network.tf`:
+
+```bash
+yc vpc security-group delete --id "$(yc vpc security-group list --format json \
+  | jq -r '.[] | select(.name | startswith("default-sg-")) | .id')"
+```
 
 ## Источники
 

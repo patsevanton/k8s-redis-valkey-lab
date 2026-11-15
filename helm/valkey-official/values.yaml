@@ -4,7 +4,7 @@
 #   helm repo add valkey https://valkey.io/valkey-helm
 #   helm repo update
 #   helm install valkey-official valkey/valkey \
-#     --version 1.0.0 -n valkey-official --create-namespace \
+#     --version 1.0.0 -n redis-valkey-lab \
 #     -f helm/valkey-official/values.yaml
 #
 # Отличия от Redis-чартов: Valkey и Sentinel — отдельные StatefulSet, поэтому

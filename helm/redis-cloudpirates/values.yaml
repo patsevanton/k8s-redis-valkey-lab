@@ -64,4 +64,7 @@ topologySpreadConstraints:
 
 pdb:
   enabled: true
+  # В чарте по умолчанию задан minAvailable: 1, а вместе с maxUnavailable
+  # Kubernetes такой PDB не принимает. Бюджет задаём только через maxUnavailable.
+  minAvailable: ""
   maxUnavailable: 1
