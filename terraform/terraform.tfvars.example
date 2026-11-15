@@ -5,7 +5,7 @@
 
 cluster_name       = "redis-valkey-lab"
 zone               = "ru-central1-d"
-node_zones         = ["ru-central1-d", "ru-central1-a"]
+node_zones         = ["ru-central1-d", "ru-central1-a", "ru-central1-e"]
 kubernetes_version = "1.35"
 node_count         = 3
 

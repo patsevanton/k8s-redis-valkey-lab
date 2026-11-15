@@ -16,24 +16,26 @@ variable "cluster_name" {
 }
 
 variable "zone" {
-  description = "Зона доступности мастер-узла. rc1b недоступна, используйте rc1d или rc1a."
+  description = "Зона доступности мастер-узла. rc1b в стенде не используется, rc1c выведена из эксплуатации; допустимы ru-central1-a, -d, -e и -f."
   type        = string
   default     = "ru-central1-d"
 
   validation {
-    condition     = contains(["ru-central1-a", "ru-central1-d"], var.zone)
-    error_message = "Допустимы только живые зоны ru-central1-a и ru-central1-d."
+    condition     = contains(["ru-central1-a", "ru-central1-d", "ru-central1-e", "ru-central1-f"], var.zone)
+    error_message = "Допустимы только ru-central1-a, ru-central1-d, ru-central1-e и ru-central1-f."
   }
 }
 
+# Порядок зон задаёт и CIDR подсетей (index + 1), поэтому ru-central1-d и
+# ru-central1-a оставлены на своих местах: иначе подсети пересоздадутся.
 variable "node_zones" {
-  description = "Зоны доступности для групп узлов. Две зоны позволяют проверять отказ зоны."
+  description = "Зоны доступности для групп узлов. Три зоны дают по узлу в каждой и проверку отказа любой зоны."
   type        = list(string)
-  default     = ["ru-central1-d", "ru-central1-a"]
+  default     = ["ru-central1-d", "ru-central1-a", "ru-central1-e"]
 
   validation {
-    condition     = length(var.node_zones) > 0 && alltrue([for z in var.node_zones : contains(["ru-central1-a", "ru-central1-d"], z)])
-    error_message = "Перечислите одну или две живые зоны: ru-central1-a и/или ru-central1-d."
+    condition     = length(var.node_zones) > 0 && alltrue([for z in var.node_zones : contains(["ru-central1-a", "ru-central1-d", "ru-central1-e", "ru-central1-f"], z)])
+    error_message = "Перечислите зоны из набора ru-central1-a, -d, -e, -f."
   }
 }
 
@@ -108,9 +110,9 @@ variable "node_cores" {
 }
 
 variable "node_memory" {
-  description = "Память узла в ГБ."
+  description = "Память узла в ГБ. На 4 ГБ все пять вариантов занимают 78–91% запрошенной памяти узлов, и замене пода не хватает места (Insufficient memory), поэтому по умолчанию 8 ГБ. Для standard-v3 при 2 vCPU это максимум (8 ГБ на ядро)."
   type        = number
-  default     = 4
+  default     = 8
 }
 
 variable "node_disk_type" {
