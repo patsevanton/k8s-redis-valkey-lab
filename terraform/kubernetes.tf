@@ -57,7 +57,13 @@ resource "yandex_kubernetes_node_group" "workers" {
   version     = var.kubernetes_version
   labels      = var.labels
 
+  # Имя узла: <короткая зона>-redis-<short_id>, например rc1a-redis-abcd.
+  # Зону подставляет системная переменная {instance.zone_id}, короткое имя
+  # берётся из пользовательских переменных local.node_zone_short_names.
+  variables = local.node_zone_short_names
+
   instance_template {
+    name        = "{zone_{instance.zone_id}}-redis-{instance.short_id}"
     platform_id = var.node_platform_id
     labels      = var.labels
 

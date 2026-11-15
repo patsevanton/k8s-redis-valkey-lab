@@ -20,6 +20,13 @@ locals {
 
   node_subnet_ids = [for subnet in yandex_vpc_subnet.nodes : subnet.id]
 
+  # Короткие имена зон для шаблона имени узла: ru-central1-a → rc1a.
+  # Ключ — пользовательская переменная, которая в шаблоне подставляется
+  # через системную {instance.zone_id}.
+  node_zone_short_names = {
+    for zone in var.node_zones : "zone_${zone}" => replace(zone, "ru-central1-", "rc1")
+  }
+
   # Внутренний трафик кластера: подсети узлов, поды и сервисы.
   internal_cidrs = concat(
     [for subnet in yandex_vpc_subnet.nodes : subnet.v4_cidr_blocks[0]],
