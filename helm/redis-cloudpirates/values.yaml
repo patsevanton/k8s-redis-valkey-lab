@@ -3,12 +3,11 @@
 # Установка (чарт распространяется только по OCI):
 #   helm install redis-cloudpirates \
 #     oci://registry-1.docker.io/cloudpirates/redis \
-#     --version 0.39.0 -n redis-valkey-lab \
+#     --version 0.40.0 -n redis-valkey-lab \
 #     -f helm/redis-cloudpirates/values.yaml
 #
-# Сам чарт несёт appVersion 8.10.2. Мы поднимаем образ до последнего
-# стабильного 8.10.3 и фиксируем его по digest: тег без digest может
-# переехать, digest — нет.
+# Чарт 0.40.0 несёт appVersion 8.10.3 и тот же digest, что закреплён ниже.
+# Образ всё равно фиксируем тегом и digest: тег без digest может переехать.
 
 architecture: replication
 replicaCount: 3
@@ -67,7 +66,6 @@ topologySpreadConstraints:
 
 pdb:
   enabled: true
-  # В чарте по умолчанию задан minAvailable: 1, а вместе с maxUnavailable
-  # Kubernetes такой PDB не принимает. Бюджет задаём только через maxUnavailable.
-  minAvailable: ""
+  # В 0.40.0 maxUnavailable приоритетнее minAvailable: PDB рендерится только
+  # с maxUnavailable, обнулять minAvailable больше не нужно.
   maxUnavailable: 1
