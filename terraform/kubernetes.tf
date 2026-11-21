@@ -3,7 +3,7 @@ resource "yandex_kubernetes_cluster" "this" {
   description             = "Redis vs Valkey lab: Helm charts, operators, failover"
   folder_id               = local.folder_id
   network_id              = yandex_vpc_network.this.id
-  cluster_ipv4_range      = var.cluster_ipv4_range
+  cluster_ipv4_ranges     = [var.cluster_ipv4_range]
   service_ipv4_range      = var.service_ipv4_range
   service_account_id      = yandex_iam_service_account.cluster.id
   node_service_account_id = yandex_iam_service_account.nodes.id

@@ -19,18 +19,21 @@ image:
 persistence:
   enabled: true
   size: 1Gi
+  storageClass: yc-network-ssd
 
 replica:
   enabled: true
   replicas: 3
 
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: "1"
-      memory: 1Gi
+# Ресурсы подов данных. Чарт читает только корневой resources;
+# вложенный replica.resources он игнорирует, и поды остаются BestEffort.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
 
 # AOF, как в Redis-вариантах: сравнение по одинаковой durability.
 extraConfig: |-

@@ -28,7 +28,7 @@
 | `redis-operator` | `redis-cluster-leader-0..2` и `redis-cluster-follower-0..2` | один контейнер | нет | 1 Gi на под | два PDB по `maxUnavailable: 1` |
 | `valkey-operator` | свой StatefulSet на каждый узел, имя пода в `status.podName` | один контейнер | нет | 1 Gi на под | создаётся оператором автоматически |
 
-HAProxy в официальном чарте Valkey выключен: при включении он добавит отдельные поды, и «6 подов» перестанет быть верным. У Sentinel-вариантов PVC получают только поды с данными.
+HAProxy в официальном чарте Valkey выключен: при включении он добавит отдельные поды, и «6 подов» перестанет быть верным. У Sentinel-вариантов PVC получают только поды с данными. Класс хранения задан явно — `yc-network-ssd`: default StorageClass в кластере `yc-network-hdd`, и без явного класса диски всех вариантов оказались бы на HDD.
 
 Все образы закреплены тегом или digest — плавающих `latest` нет. Redis 8.10.3 и Valkey 9.1.3 — последние стабильные релизы upstream на дату замера. Расхождения по вине вендоров: чарт CloudPirates несёт appVersion 8.10.2 (образ в values поднят до 8.10.3), у оператора OT последний собранный образ `v8.10.1` — на два патча позже upstream.
 
@@ -146,9 +146,11 @@ kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- \
   redis-cli SET lab:key value EX 60
 kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- redis-cli TTL lab:key
 
-# Модули. В официальном образе `redis` из Redis 8 есть только vectorset:
-# JSON, Search, Bloom и прочие модули лежат в отдельном образе redis-stack,
-# а не в `redis`. У Valkey в образе модуль lua.
+# Модули. В образе `redis` 8.x лежат Bloom, Search, TimeSeries, JSON (ReJSON)
+# и встроенный vectorset: отдельный redis-stack не нужен. Но грузит их
+# docker-entrypoint через --loadmodule, а чарты запускают redis-server напрямую
+# со своим конфигом, поэтому в этом стенде виден только vectorset. Остальные
+# подключаются строкой loadmodule в конфиге. У Valkey в образе модуль lua.
 kubectl exec -n redis-valkey-lab redis-cloudpirates-0 -c redis -- redis-cli MODULE LIST
 kubectl exec -n redis-valkey-lab valkey-official-0 -c valkey -- valkey-cli MODULE LIST
 
@@ -218,7 +220,7 @@ kubectl exec -n redis-valkey-lab \
 
 Разница объясняется не скоростью Redis или Valkey, а упаковкой. Где есть preStop-хук, мастерство передаётся до остановки контейнера: 3–5 c. У valkey-operator своего хука нет — мастерство передаёт сам сервер, поэтому время зависит от того, успевает ли он это сделать до остановки контейнера: в первом прогоне 7–9 c, во втором 2–4 c (разбор ниже). У groundhog2k хуков нет вообще, и время равно детекции Sentinel `down-after-milliseconds: 5000` плюс выборы: 8 c. У CloudPirates хук висит на обоих контейнерах (`prestop.sh` и `prestop-sentinel.sh`).
 
-Отдельный результат — **реанимация пода у оператора OT**. Переключение на реплику проходит за 5 c, но пересозданный под не возвращается в кластер. Причина в том, что `/etc/redis/redis.conf` задаёт `cluster-config-file /node-conf/nodes.conf`, а `storage.nodeConfVolume` в CR выключен: `/node-conf` — не том, а каталог внутри контейнера, поэтому после пересоздания пода он пустой. В логах видно `No cluster configuration found, I'm …` и `sed: /node-conf/nodes.conf: No such file or directory`: узел стартует одиночным мастером (`cluster_known_nodes:1`) с нулём или одним слотом из прежней карты. Остальные узлы видят старую запись этого пода как `fail`, а новый под в кластер не попадает, и оператор раз в минуту безуспешно пытается выполнить `redis-cli --cluster create`, логируя `Node ... is not empty` (подробности — в [OT-CONTAINER-KIT/redis-operator#1978](https://github.com/OT-CONTAINER-KIT/redis-operator/issues/1978)). Итог: шард деградирует — живёт без реплики или теряет мастера — и сам не восстанавливается.
+Отдельный результат — **реанимация пода у оператора OT**. Переключение на реплику проходит за 5 c, но пересозданный под не возвращается в кластер. Причина в том, что оператор запускает сервер с `cluster-config-file /node-conf/nodes.conf`, а `storage.nodeConfVolume` в CR выключен: `/node-conf` — не том, а каталог в образе, поэтому после пересоздания пода он пустой. В логах видно `No cluster configuration found, I'm …` и `sed: /node-conf/nodes.conf: No such file or directory`: узел стартует одиночным мастером (`cluster_known_nodes:1`) с нулём или одним слотом из прежней карты. Остальные узлы видят старую запись этого пода как `fail`, а новый под в кластер не попадает, и оператор раз в минуту безуспешно пытается выполнить `redis-cli --cluster create`, логируя `Node ... is not empty` (подробности — в [OT-CONTAINER-KIT/redis-operator#1978](https://github.com/OT-CONTAINER-KIT/redis-operator/issues/1978)). Итог: шард деградирует — живёт без реплики или теряет мастера — и сам не восстанавливается.
 
 Удаление PVC не помогает: `nodes.conf` лежит не на нём, а в локальном каталоге контейнера. Штатный путь — включить `storage.nodeConfVolume: true`, чтобы конфигурация кластера переживала пересоздание пода (объяснение флага — в [обсуждении #871](https://github.com/OT-CONTAINER-KIT/redis-operator/discussions/871)); в этом стенде флаг выключен, и такое лечение не проверялось.
 
@@ -333,7 +335,7 @@ cd terraform
 terraform destroy
 ```
 
-PVC и диски, созданные CSI-драйвером, могут остаться после удаления namespace. Проверьте `kubectl get pv` и `yc compute disk list` перед `terraform destroy`. У чарта CloudPirates есть отдельный флаг `persistence.keepPvc`, у groundhog2k — `storage.keepPvc`: по умолчанию PVC удаляются вместе с релизом.
+PVC, созданные из `volumeClaimTemplates`, переживают и удаление StatefulSet, и `helm uninstall`: при пустом `persistentVolumeClaimRetentionPolicy` Kubernetes оставляет их (по умолчанию `Retain`). Так ведут себя все три Helm-варианта: у CloudPirates 0.39.0 ключа `persistence.keepPvc` нет вообще, а `storage.keepPvc` у groundhog2k действует только в non-HA режиме. Поэтому после `helm uninstall` остаются PVC и диски CSI; удаляет их `kubectl delete namespace redis-valkey-lab` или явный `kubectl delete pvc -n redis-valkey-lab --all`. Проверьте `kubectl get pv` и `yc compute disk list` перед `terraform destroy`, иначе сеть и кластер не удалятся из-за оставшихся дисков.
 
 Yandex Cloud вместе с сетью создаёт неуправляемую группу безопасности по умолчанию (`default-sg-<network_id>`, флаг `default_for_network: true`) с открытым в обе стороны доступом. В state её нет, поэтому `terraform destroy` её не удалит, а сеть с висящей на ней группой не удалится. Перед `terraform destroy` удалите её вручную — в коде это отмечено TODO в `terraform/network.tf`:
 

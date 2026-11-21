@@ -66,6 +66,8 @@ spec:
     volumeClaimTemplate:
       spec:
         accessModes: ["ReadWriteOnce"]
+        # Класс задаём явно: default StorageClass в кластере — yc-network-hdd.
+        storageClassName: yc-network-ssd
         resources:
           requests:
             storage: 1Gi

@@ -21,6 +21,8 @@ spec:
 
   persistence:
     size: 1Gi
+    # Класс задаём явно: default StorageClass в кластере — yc-network-hdd.
+    storageClassName: yc-network-ssd
     reclaimPolicy: Delete
 
   config:

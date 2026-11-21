@@ -45,6 +45,9 @@ sentinel:
 persistence:
   enabled: true
   size: 1Gi
+  # Класс задаём явно: в кластере по умолчанию yc-network-hdd,
+  # а для сравнения Redis и Valkey нужен SSD, как у загрузочных дисков узлов.
+  storageClass: yc-network-ssd
 
 resources:
   requests:
