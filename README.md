@@ -30,7 +30,7 @@
 
 HAProxy в официальном чарте Valkey выключен: при включении он добавит отдельные поды, и «6 подов» перестанет быть верным. У Sentinel-вариантов PVC по 1 Gi получают только поды с данными, у кластерных операторов — все шесть подов. Класс хранения задан явно — `yc-network-ssd`: default StorageClass в кластере `yc-network-hdd`, и без явного класса диски всех вариантов оказались бы на HDD.
 
-Все образы закреплены тегом или digest — плавающих `latest` нет. Redis 8.10.3 и Valkey 9.1.3 — последние стабильные релизы upstream на дату замера. Расхождения по вине вендоров: у оператора OT последний собранный образ `v8.10.1` — на два патча позже upstream; чарт CloudPirates до 0.39.0 включительно нёс appVersion 8.10.2, в 0.40.0 он уже 8.10.3.
+Все образы закреплены тегом или digest — плавающих `latest` нет. Redis 8.10.3 и Valkey 9.1.3 — последние стабильные релизы upstream на дату замера. Расхождение по вине вендора одно: у оператора OT последний собранный образ `v8.10.1` — на два патча позже upstream; чарт CloudPirates в 0.40.0 уже несёт 8.10.3.
 
 Bitnami-чарты в стенд сознательно не входят: их образы публикуются только как `latest`, без неизменяемых версий в основном репозитории.
 
@@ -91,7 +91,7 @@ helm install redis-groundhog2k groundhog2k/redis \
 ```bash
 helm install redis-cloudpirates \
   oci://registry-1.docker.io/cloudpirates/redis \
-  --version 0.39.0 -n redis-valkey-lab \
+  --version 0.40.0 -n redis-valkey-lab \
   -f helm/redis-cloudpirates/values.yaml
 ```
 
@@ -299,12 +299,12 @@ Failover мастера, время от `kubectl delete pod` до нового 
 | Redis | 8.10.3 | 8.10.3 | — |
 | Valkey | 9.1.3 | 9.2.0 | релиз 2026-11-19; чарт и оператор ещё на 9.1.3 |
 | `groundhog2k/redis` | 2.4.9 | 2.5.0 | добавлен `failoverOnShutdown` с preStop-хуком (2026-11-20) |
-| CloudPirates `redis` | 0.39.0 | 0.40.0 | appVersion поднят до 8.10.3, `maxUnavailable` теперь приоритетнее `minAvailable` |
+| CloudPirates `redis` | 0.40.0 | 0.40.0 | исправлен [#1922](https://github.com/CloudPirates-io/helm-charts/issues/1922): `maxUnavailable` приоритетнее `minAvailable` |
 | `valkey/valkey` | 1.0.0 | 1.0.0 | — |
 | `redis-operator` (OT) | 0.27.0 | 0.27.0 | — |
 | `valkey-operator` | 0.9.0 | 0.9.0 | — |
 
-Новые версии чартов и Valkey 9.2.0 в стенде не проверялись: замеры выше сделаны на закреплённых в values версиях, обновление требует отдельного прогона.
+Замеры выше сделаны на версиях, закреплённых в values на момент прогона: CloudPirates тогда был 0.39.0. После прогона стенд обновлён до 0.40.0 — образ тот же 8.10.3 с тем же digest, меняется только рендеринг PDB. Отдельный прогон на 0.40.0 не делался. Valkey 9.2.0 и `groundhog2k/redis` 2.5.0 в стенде не проверялись: обновление требует отдельного замера.
 
 ## Ограничения стенда
 
@@ -313,9 +313,8 @@ Failover мастера, время от `kubectl delete pod` до нового 
 - **Master не HA.** Падение зоны с мастером остановит API. Это осознанный компромисс по цене; отказоустойчивость данных проверяется на уровне подов и узлов.
 - **У Redis нет официального Helm-чарта.** Redis в Helm представлен только community-чартами (в стенде — groundhog2k и CloudPirates), тогда как Valkey публикует официальный чарт. Это часть сравнения: у Valkey выше уровень поддержки в Kubernetes.
 - **Разная цена Sentinel.** У groundhog2k и CloudPirates Sentinel — сайдкар в поде с данными (3 пода, 3 контейнера Sentinel), у официального чарта Valkey — три отдельных пода Sentinel (6 подов всего), у оператора Valkey и OT кластерный режим без Sentinel (6 подов). Сравнивайте не только задержку failover, но и накладные расходы.
-- **PDB в чарте CloudPirates.** До 0.39.0 чарт по умолчанию ставил `minAvailable: 1`, и если добавить к нему `maxUnavailable`, Kubernetes отвергал PDB (`minAvailable and maxUnavailable cannot be both set`). В values бюджет задаётся только через `maxUnavailable`, а `minAvailable` явно обнуляется ([CloudPirates-io/helm-charts#1922](https://github.com/CloudPirates-io/helm-charts/issues/1922), issue закрыт). В 0.40.0 `maxUnavailable` рендерится один и без обнуления `minAvailable`; обходной путь в values оставлен, потому что стенд закреплён на 0.39.0.
 - **Valkey Operator молодой.** CRD `v1alpha1`, поддерживается только кластерный режим; standalone и Sentinel не заявлены. Для production оператор пока не рекомендован.
-- **Расхождение версий у вендоров.** Образ OT-оператора `quay.io/opstree/redis:v8.10.1` отстаёт от upstream 8.10.3 на два патча; чарт CloudPirates до 0.39.0 включительно нёс appVersion 8.10.2, в 0.40.0 уже 8.10.3. Так выглядит реальная скорость обновления упаковок, и это тоже результат замера.
+- **Расхождение версий у вендоров.** Образ OT-оператора `quay.io/opstree/redis:v8.10.1` отстаёт от upstream 8.10.3 на два патча. Так выглядит реальная скорость обновления упаковки, и это тоже результат замера.
 - **Digest-фиксация только у CloudPirates.** groundhog2k и официальный чарт Valkey фиксируют версию тегом, CloudPirates — тегом и digest. Для воспроизводимых замеров сверяйте digest через `kubectl get pod -o jsonpath='{.spec.containers[*].image}'`.
 - **Публичные IP.** Узлы выходят в интернет через свой публичный IP (`nat = true`), чтобы тянуть образы с Docker Hub и ghcr.io. Если политика запрещает публичные IP у узлов, замените это на egress-gateway.
 - **Состояние Terraform локальное.** `terraform.tfstate` и `terraform.tfvars` не коммитятся. Для командной работы добавьте S3-backend.
@@ -377,7 +376,7 @@ cd terraform
 terraform destroy
 ```
 
-PVC, созданные из `volumeClaimTemplates`, переживают и удаление StatefulSet, и `helm uninstall`: при пустом `persistentVolumeClaimRetentionPolicy` Kubernetes оставляет их (по умолчанию `Retain`). Так ведут себя все три Helm-варианта: у CloudPirates 0.39.0 ключа `persistence.keepPvc` нет вообще, а `storage.keepPvc` у groundhog2k действует только в non-HA режиме. Поэтому после `helm uninstall` остаются PVC и диски CSI; удаляет их `kubectl delete namespace redis-valkey-lab` или явный `kubectl delete pvc -n redis-valkey-lab --all`. Проверьте `kubectl get pv` и `yc compute disk list` перед `terraform destroy`, иначе сеть и кластер не удалятся из-за оставшихся дисков.
+PVC, созданные из `volumeClaimTemplates`, переживают и удаление StatefulSet, и `helm uninstall`: при пустом `persistentVolumeClaimRetentionPolicy` Kubernetes оставляет их (по умолчанию `Retain`). Так ведут себя все три Helm-варианта: у CloudPirates 0.40.0 ключа `persistence.keepPvc` нет вообще, а `storage.keepPvc` у groundhog2k действует только в non-HA режиме. Поэтому после `helm uninstall` остаются PVC и диски CSI; удаляет их `kubectl delete namespace redis-valkey-lab` или явный `kubectl delete pvc -n redis-valkey-lab --all`. Проверьте `kubectl get pv` и `yc compute disk list` перед `terraform destroy`, иначе сеть и кластер не удалятся из-за оставшихся дисков.
 
 Yandex Cloud вместе с сетью создаёт неуправляемую группу безопасности по умолчанию (`default-sg-<network_id>`, флаг `default_for_network: true`) с открытым в обе стороны доступом. В state её нет, поэтому `terraform destroy` её не удалит, а сеть с висящей на ней группой не удалится. Перед `terraform destroy` удалите её вручную — в коде это отмечено TODO в `terraform/network.tf`:
 
