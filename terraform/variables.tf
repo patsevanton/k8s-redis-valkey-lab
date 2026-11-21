@@ -110,7 +110,7 @@ variable "node_cores" {
 }
 
 variable "node_memory" {
-  description = "Память узла в ГБ. На 4 ГБ все пять вариантов занимают 78–91% запрошенной памяти узлов, и замене пода не хватает места (Insufficient memory), поэтому по умолчанию 8 ГБ. Для standard-v3 при 2 vCPU это максимум (8 ГБ на ядро)."
+  description = "Память узла в ГБ. На 4 ГБ пяти вариантам не хватает места для замены пода (Insufficient memory), поэтому по умолчанию 8 ГБ. Для standard-v3 при 2 vCPU это максимум (8 ГБ на ядро)."
   type        = number
   default     = 8
 }
