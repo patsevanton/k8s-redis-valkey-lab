@@ -40,10 +40,21 @@ spec:
     pdb:
       enabled: true
       maxUnavailable: 1
+    # Жёстко: по одному лидеру на зону и на узел. При трёх шардах и трёх зонах
+    # это даёт 1/1/1, то есть потеря зоны уносит максимум один мастер и выборы
+    # набирают кворум. Ограничение на hostname страхует раскладку при
+    # node_count > 3.
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: ScheduleAnyway
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            role: leader
+            clusterId: redis-cluster
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             role: leader
@@ -53,10 +64,22 @@ spec:
     pdb:
       enabled: true
       maxUnavailable: 1
+    # То же для реплик: 1/1/1 по зонам и узлам. Так реплика каждого шарда
+    # почти всегда вне зоны своего мастера, но жёсткой привязки «реплика
+    # шарда N к другой зоне» оператор не даёт: лидеры и реплики живут в двух
+    # отдельных StatefulSet, и шард в метках пода не отражён. Полную развязку
+    # по шардам умеет только valkey-operator (scheduling.zone.spread.shard).
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: ScheduleAnyway
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            role: follower
+            clusterId: redis-cluster
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             role: follower

@@ -36,15 +36,23 @@ spec:
       cpu: "1"
       memory: 1Gi
 
+  # Жёсткая развязка мастера и реплики одного шарда: dimension shard
+  # раскладывает поды каждого шарда по зонам и узлам. При replicasPerShard: 1 и
+  # трёх зонах primary и replica шарда оказываются в разных зонах и на разных
+  # узлах. Preferred (как было раньше) ничего не гарантировал: в замере отказа
+  # зоны два мастера из трёх попали в одну зону, выборы не набрали кворум и
+  # кластер ушёл в cluster_state:fail.
+  # Ограничение: подам нужны зоны для размещения, поэтому при недоступной зоне
+  # под остаётся Pending, а не садится рядом с парой.
   scheduling:
     node:
       spread:
         shard:
-          mode: Preferred
+          mode: Required
     zone:
       spread:
         shard:
-          mode: Preferred
+          mode: Required
 
   exporter:
     enabled: false
