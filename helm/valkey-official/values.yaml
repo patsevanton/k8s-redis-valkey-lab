@@ -57,10 +57,23 @@ sentinel:
       cpu: 200m
       memory: 128Mi
 
+  # Жёстко разносим Sentinel по зонам и узлам — по одному в каждой зоне.
+  # Цена: если зона недоступна, третий Sentinel остаётся Pending и кворум
+  # держится на 2 из 3, а не восстанавливается переездом в живую зону. Это
+  # осознанный выбор в пользу гарантии, что два Sentinel не окажутся в одной
+  # зоне. Нужен самовосстановившийся кворум 3 из 3 — верните здесь
+  # ScheduleAnyway, оставив жёсткие ограничения у подов данных.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: ScheduleAnyway
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: valkey-sentinel
+          app.kubernetes.io/component: sentinel
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
       labelSelector:
         matchLabels:
           app.kubernetes.io/name: valkey-sentinel
@@ -72,10 +85,22 @@ sentinel:
     enabled: true
     maxUnavailable: 1
 
+# Жёстко разносим поды данных по зонам и узлам: три пода в трёх зонах дают
+# раскладку 1/1/1, то есть мастер и обе реплики в разных зонах, даже если
+# роли поменяются после failover. ScheduleAnyway при нехватке памяти сажал два
+# пода в одну зону и обесценивал кворум 2 из 3.
+# Цена — под с зональным PVC, которому не хватило места, остаётся Pending.
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: ScheduleAnyway
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/component: valkey
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
     labelSelector:
       matchLabels:
         app.kubernetes.io/name: valkey

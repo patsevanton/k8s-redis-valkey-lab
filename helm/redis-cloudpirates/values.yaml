@@ -56,10 +56,21 @@ resources:
     cpu: "1"
     memory: 1Gi
 
+# Жёстко разносим поды по зонам и узлам. Sentinel здесь сайдкар в поде с
+# данными, поэтому три пода в трёх зонах раскладываются 1/1/1 и мастер с
+# репликами гарантированно оказываются в разных зонах. ScheduleAnyway этого не
+# гарантировал: при нехватке памяти два пода могли сесть в одну зону.
+# Цена — под, которому не хватило места в своей зоне, остаётся Pending.
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: ScheduleAnyway
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: redis
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
     labelSelector:
       matchLabels:
         app.kubernetes.io/name: redis
